@@ -27,13 +27,14 @@ TRANSLATIONS = {
     "en": {
         "app_title": "VIDEO DOWNLOADER GUI",
         "language_label": "Language:",
+        "intro_overview_title": "Overview:",
         "intro_message": (
             "This script downloads a video from the Internet "
             "and saves it to the Downloads folder.\n"
             "yt-dlp supports many streaming platforms with format selection; "
             "FFmpeg only works with direct video file links (e.g. a URL ending in .mp4)."
         ),
-        "intro_warning_title": "Disclaimer",
+        "intro_warning_title": "Disclaimer:",
         "intro_warning_message": (
             "Only download videos you own the rights to, that are in the public domain, "
             "or that the copyright holder allows you to download (e.g. under a Creative Commons "
@@ -99,13 +100,14 @@ TRANSLATIONS = {
     "fr": {
         "app_title": "VIDEO DOWNLOADER GUI",
         "language_label": "Langue :",
+        "intro_overview_title": "Présentation :",
         "intro_message": (
             "Ce script permet de télécharger une vidéo depuis Internet "
             "et de l'enregistrer dans le dossier Téléchargements.\n"
             "yt-dlp prend en charge de nombreuses plateformes de streaming avec choix des formats ; "
             "FFmpeg fonctionne uniquement avec des liens directs vers un fichier vidéo (ex. une URL se terminant par .mp4)."
         ),
-        "intro_warning_title": "Avertissement",
+        "intro_warning_title": "Avertissement :",
         "intro_warning_message": (
             "Ne télécharger que des vidéos dont vous détenez les droits, qui sont dans le domaine "
             "public, ou dont l'ayant droit autorise le téléchargement (par exemple sous licence "
@@ -396,17 +398,17 @@ class VideosDownloaderApp:
 
         language_combo.bind("<<ComboboxSelected>>", on_language_change)
 
-        tk.Label(frame, text=self.t("intro_message"), wraplength=WINDOW_WIDTH - 60, justify="left").pack(
-            pady=(0, 16)
-        )
+        overview_frame = tk.Frame(frame)
+        overview_frame.pack(fill="x", pady=(0, 16))
+        tk.Label(overview_frame, text=self.t("intro_overview_title"), font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        tk.Label(
+            overview_frame, text=self.t("intro_message"),
+            wraplength=WINDOW_WIDTH - 60, justify="left",
+        ).pack(anchor="w")
 
         warning_frame = tk.Frame(frame)
         warning_frame.pack(fill="x", pady=(0, 16))
-        warning_title_line = tk.Frame(warning_frame)
-        warning_title_line.pack(anchor="w")
-        tk.Label(warning_title_line, text=self.t("intro_warning_title") + " :", font=("Segoe UI", 10, "bold")).pack(
-            side="left"
-        )
+        tk.Label(warning_frame, text=self.t("intro_warning_title"), font=("Segoe UI", 10, "bold")).pack(anchor="w")
         tk.Label(
             warning_frame, text=self.t("intro_warning_message"),
             wraplength=WINDOW_WIDTH - 60, justify="left",
