@@ -5,6 +5,8 @@ Windows GUI (Python/Tkinter) to download videos, including many streaming platfo
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+![Video Downloader GUI - introduction screen](intro-screen.png)
+
 ## Disclaimer / Avertissement
 
 **EN** — Only download videos you own the rights to, that are in the public domain, or that the copyright holder allows you to download (e.g. under a Creative Commons license or explicit permission). Respect the terms of service of the platform you download from. You are solely responsible for how you use this tool.
