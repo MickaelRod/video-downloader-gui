@@ -83,6 +83,7 @@ TRANSLATIONS = {
         "video_format_label": "Video format:",
         "audio_format_label": "Audio format:",
         "default_format_label": "Default",
+        "no_video_format_label": "Do not download the video (audio only)",
         "button_download": "Download",
         "warning_file_exists": "The video \"{filename}\" already exists. Please choose another name.",
         "step_downloading_title": "Downloading...",
@@ -169,6 +170,7 @@ TRANSLATIONS = {
         "video_format_label": "Format vidéo :",
         "audio_format_label": "Format audio :",
         "default_format_label": "Par défaut",
+        "no_video_format_label": "Ne pas télécharger la vidéo (audio seul)",
         "button_download": "Télécharger",
         "warning_file_exists": "La vidéo \"{filename}\" existe déjà. Préciser un autre nom.",
         "step_downloading_title": "Téléchargement en cours...",
@@ -352,8 +354,10 @@ def codec_short_label(codec: str) -> str:
 def ytdlp_fetch_info(url: str):
     """Returns (title, duration_string, video_formats, audio_formats, used_bot_bypass) via yt-dlp -j.
 
-    video_formats and audio_formats are lists of (format_id, label). If the first attempt hits a
-    bot-check wall and deno is available, automatically retries once with BOT_BYPASS_ARGS.
+    video_formats is a list of (format_id, label). audio_formats is a list of
+    (format_id, label, extension) — extension is needed to name audio-only downloads correctly.
+    If the first attempt hits a bot-check wall and deno is available, automatically retries once
+    with BOT_BYPASS_ARGS.
     """
     command = [YTDLP_EXE, "-j", "--skip-download", url]
     result = subprocess.run(command, capture_output=True, text=True, timeout=60)
@@ -393,8 +397,8 @@ def ytdlp_fetch_info(url: str):
             video_formats.append((format_id, label))
         elif has_audio and not has_video:
             quality = (entry.get("format_note") or "").capitalize()
-            extension = entry.get("ext", "").upper()
-            audio_formats.append((format_id, f"{quality} ({extension})"))
+            extension = entry.get("ext", "")
+            audio_formats.append((format_id, f"{quality} ({extension.upper()})", extension))
 
     return title, duration_string, video_formats, audio_formats, used_bot_bypass
 
@@ -675,27 +679,40 @@ class VideosDownloaderApp:
         title_entry.insert(0, selected_title if selected_title is not None else (title or ""))
 
         default_label = self.t("default_format_label")
+        no_video_label = self.t("no_video_format_label")
+        VIDEO_OFFSET = 2  # "Default" and "Do not download the video" precede real video formats
 
         tk.Label(frame, text=self.t("video_format_label")).pack(anchor="w")
-        video_values = [default_label] + [label for _, label in video_formats]
+        video_values = [default_label, no_video_label] + [label for _, label in video_formats]
         video_combo = ttk.Combobox(frame, values=video_values, width=91, state="readonly")
         video_combo.pack(pady=(6, 16))
         video_combo.current(selected_video_index)
 
         tk.Label(frame, text=self.t("audio_format_label")).pack(anchor="w")
-        audio_values = [default_label] + [label for _, label in audio_formats]
+        audio_values = [default_label] + [label for _, label, _ in audio_formats]
         audio_combo = ttk.Combobox(frame, values=audio_values, width=91, state="readonly")
         audio_combo.pack(pady=(6, 16))
         audio_combo.current(selected_audio_index)
 
         def on_download():
             chosen_title = title_entry.get().strip() or title or DEFAULT_FILENAME_STEM
-            self.video_name = ensure_mp4_extension(sanitize_filename(chosen_title))
+            sanitized_title = sanitize_filename(chosen_title)
 
-            video_index = video_combo.current() - 1
+            video_selection = video_combo.current()
             audio_index = audio_combo.current() - 1
-            video_format_id = video_formats[video_index][0] if video_index >= 0 else None
             audio_format_id = audio_formats[audio_index][0] if audio_index >= 0 else None
+            audio_extension = audio_formats[audio_index][2] if audio_index >= 0 else None
+
+            audio_only = video_selection == 1
+            video_index = video_selection - VIDEO_OFFSET
+            video_format_id = video_formats[video_index][0] if video_index >= 0 else None
+
+            if audio_only:
+                # Falls back to .m4a when no explicit audio format was picked ("Default" -> yt-dlp's
+                # bestaudio); the actual downloaded container could differ (e.g. webm/opus) in that case.
+                self.video_name = f"{sanitized_title}.{audio_extension or 'm4a'}"
+            else:
+                self.video_name = ensure_mp4_extension(sanitized_title)
 
             destination = os.path.join(self.download_folder, self.video_name)
             if os.path.exists(destination):
@@ -708,7 +725,7 @@ class VideosDownloaderApp:
                 )
                 return
 
-            self.run_ytdlp_download(destination, video_format_id, audio_format_id)
+            self.run_ytdlp_download(destination, video_format_id, audio_format_id, audio_only=audio_only)
 
         buttons_frame = tk.Frame(frame)
         buttons_frame.pack(pady=(8, 0))
@@ -717,17 +734,21 @@ class VideosDownloaderApp:
         )
         tk.Button(buttons_frame, text=self.t("button_back"), width=20, command=self.show_url_step).pack(side="left")
 
-    def run_ytdlp_download(self, destination: str, video_format_id, audio_format_id) -> None:
+    def run_ytdlp_download(self, destination: str, video_format_id, audio_format_id, audio_only: bool = False) -> None:
         remove_leftover_part_files(destination)
 
         base_command = [YTDLP_EXE, "-o", destination, "--no-continue", "--newline"]
-        if video_format_id and audio_format_id:
-            base_command += ["-f", f"{video_format_id}+{audio_format_id}"]
-        elif video_format_id:
-            base_command += ["-f", f"{video_format_id}+bestaudio"]
-        elif audio_format_id:
-            base_command += ["-f", f"bestvideo+{audio_format_id}"]
-        base_command += ["--merge-output-format", "mp4", self.video_url]
+        if audio_only:
+            base_command += ["-f", audio_format_id or "bestaudio"]
+        else:
+            if video_format_id and audio_format_id:
+                base_command += ["-f", f"{video_format_id}+{audio_format_id}"]
+            elif video_format_id:
+                base_command += ["-f", f"{video_format_id}+bestaudio"]
+            elif audio_format_id:
+                base_command += ["-f", f"bestvideo+{audio_format_id}"]
+            base_command += ["--merge-output-format", "mp4"]
+        base_command += [self.video_url]
 
         self.run_ytdlp_download_attempt(destination, base_command, allow_bot_bypass_retry=True)
 
