@@ -1,8 +1,8 @@
 # Video Downloader GUI
 
-**EN** — Windows GUI (Python/Tkinter) to download videos, including many streaming platforms, via yt-dlp or ffmpeg with format selection.
+**EN** — Windows GUI (Python/Tkinter) to download videos or playlists, including many streaming platforms, via yt-dlp or ffmpeg, with video/audio format selection and audio-only downloads.
 
-**FR** — Interface graphique Windows (Python/Tkinter) pour télécharger des vidéos, de nombreuses plateformes de streaming comprises, via yt-dlp ou ffmpeg avec choix des formats.
+**FR** — Interface graphique Windows (Python/Tkinter) pour télécharger des vidéos ou des playlists, de nombreuses plateformes de streaming comprises, via yt-dlp ou ffmpeg, avec choix des formats vidéo/audio et téléchargement audio seul.
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
