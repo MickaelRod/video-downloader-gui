@@ -1,0 +1,6 @@
+# yt-dlp and ffmpeg are external command-line tools, not Python packages,
+# and must be installed separately (see README.md).
+
+# Optional: required by some streaming platforms for yt-dlp.
+# Only versions 0.5.10 and 0.10.x are currently supported by yt-dlp.
+curl_cffi==0.10.0

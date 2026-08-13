@@ -1,0 +1,37 @@
+# Video Downloader GUI
+
+Windows GUI (Python/Tkinter) to download videos, including many streaming platforms, via yt-dlp or ffmpeg with format selection. | Interface graphique Windows (Python/Tkinter) pour télécharger des vidéos, de nombreuses plateformes de streaming comprises, via yt-dlp ou ffmpeg avec choix des formats.
+
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+## Disclaimer / Avertissement
+
+**EN** — Only download videos you own the rights to, that are in the public domain, or that the copyright holder allows you to download (e.g. under a Creative Commons license or explicit permission). Respect the terms of service of the platform you download from. You are solely responsible for how you use this tool.
+
+**FR** — Ne télécharger que des vidéos dont vous détenez les droits, qui sont dans le domaine public, ou dont l'ayant droit autorise le téléchargement (par exemple sous licence Creative Commons ou avec une autorisation explicite). Respecter les conditions d'utilisation de la plateforme depuis laquelle vous téléchargez. Vous êtes seul responsable de l'usage que vous faites de cet outil.
+
+## Features / Fonctionnalités
+
+- **EN**: Bilingual GUI (English/French), two download engines (yt-dlp for streaming platforms with video/audio format selection, ffmpeg for direct video file links), link validation, duplicate filename protection, download summary (size, duration, location, elapsed time).
+- **FR** : Interface bilingue (anglais/français), deux moteurs de téléchargement (yt-dlp pour les plateformes de streaming avec choix des formats vidéo/audio, ffmpeg pour les liens directs vers un fichier vidéo), vérification du lien, protection contre l'écrasement de fichiers, récapitulatif du téléchargement (taille, durée, emplacement, durée de l'opération).
+
+## Requirements / Prérequis
+
+- Python 3.10+
+- At least one of / au moins l'un des deux :
+  - [yt-dlp](https://github.com/yt-dlp/yt-dlp) (`pip install yt-dlp`)
+  - [ffmpeg](https://ffmpeg.org/download.html) (must be available in your system `PATH`)
+- Optional / optionnel : [curl_cffi](https://github.com/lexiforest/curl_cffi) — required by some streaming platforms for yt-dlp. Only versions `0.5.10` or `0.10.x` are currently supported by yt-dlp. / requis par certaines plateformes de streaming pour yt-dlp. Seules les versions `0.5.10` ou `0.10.x` sont actuellement supportées par yt-dlp. `pip install -r requirements.txt`
+
+## Usage / Utilisation
+
+```bash
+python video_downloader_gui.py
+```
+
+The app detects available dependencies at startup and shows their status on the introduction screen. / L'application détecte les dépendances disponibles au démarrage et affiche leur statut sur l'écran d'introduction.
+
+## License / Licence
+
+[MIT](LICENSE)
