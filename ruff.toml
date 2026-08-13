@@ -1,0 +1,9 @@
+line-length = 120
+
+[lint]
+# Pyflakes (F) catches real bugs (unused imports/variables, undefined names, etc.);
+# pycodestyle errors/warnings (E/W) catch syntax-adjacent issues. Line length (E501) is
+# ignored: several UI strings and Tkinter widget calls are legitimately long, and wrapping
+# them would hurt readability more than it helps.
+select = ["E", "F", "W"]
+ignore = ["E501"]

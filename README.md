@@ -40,8 +40,8 @@ The app detects available dependencies at startup and shows their status on the 
 
 ## Development / Développement
 
-- **EN**: `pip install -r requirements-dev.txt` then `python -m pytest` runs the unit test suite covering the pure helper functions (filename sanitization, progress parsing, etc.). Tests run automatically on GitHub Actions for every push and pull request.
-- **FR** : `pip install -r requirements-dev.txt` puis `python -m pytest` exécute la suite de tests unitaires couvrant les fonctions utilitaires pures (nettoyage de nom de fichier, analyse de la progression, etc.). Les tests s'exécutent automatiquement via GitHub Actions à chaque push et pull request.
+- **EN**: `pip install -r requirements-dev.txt` then `python -m pytest` runs the unit test suite covering the pure helper functions (filename sanitization, progress parsing, etc.), and `ruff check .` runs the linter (config in `ruff.toml`). Both run automatically on GitHub Actions for every push and pull request.
+- **FR** : `pip install -r requirements-dev.txt` puis `python -m pytest` exécute la suite de tests unitaires couvrant les fonctions utilitaires pures (nettoyage de nom de fichier, analyse de la progression, etc.), et `ruff check .` exécute le linter (configuration dans `ruff.toml`). Les deux s'exécutent automatiquement via GitHub Actions à chaque push et pull request.
 
 ## Known limitation / Limitation connue
 
