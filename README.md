@@ -17,8 +17,8 @@
 
 ## Features / Fonctionnalités
 
-- **EN**: Bilingual GUI (English/French), two download engines (yt-dlp for streaming platforms with video/audio format selection, ffmpeg for direct video file links), link validation, duplicate filename protection, editable destination folder, live progress bar with cancel button, download summary (size, duration, location, elapsed time).
-- **FR** : Interface bilingue (anglais/français), deux moteurs de téléchargement (yt-dlp pour les plateformes de streaming avec choix des formats vidéo/audio, ffmpeg pour les liens directs vers un fichier vidéo), vérification du lien, protection contre l'écrasement de fichiers, dossier de destination modifiable, barre de progression en temps réel avec bouton d'annulation, récapitulatif du téléchargement (taille, durée, emplacement, durée de l'opération).
+- **EN**: Bilingual GUI (English/French), two download engines (yt-dlp for streaming platforms with video/audio format selection, ffmpeg for direct video file links), link validation, duplicate filename protection, editable destination folder, live progress bar with cancel button, automatic retry past some bot-check walls (via deno, no browser cookies involved), download summary (size, duration, location, elapsed time).
+- **FR** : Interface bilingue (anglais/français), deux moteurs de téléchargement (yt-dlp pour les plateformes de streaming avec choix des formats vidéo/audio, ffmpeg pour les liens directs vers un fichier vidéo), vérification du lien, protection contre l'écrasement de fichiers, dossier de destination modifiable, barre de progression en temps réel avec bouton d'annulation, nouvelle tentative automatique face à certaines vérifications anti-bot (via deno, sans recours aux cookies du navigateur), récapitulatif du téléchargement (taille, durée, emplacement, durée de l'opération).
 
 ## Requirements / Prérequis
 
@@ -27,6 +27,7 @@
   - [yt-dlp](https://github.com/yt-dlp/yt-dlp) (`pip install yt-dlp`)
   - [ffmpeg](https://ffmpeg.org/download.html) (must be available in your system `PATH`)
 - Optional / optionnel : [curl_cffi](https://github.com/lexiforest/curl_cffi) — required by some streaming platforms for yt-dlp. Only versions `0.5.10` or `0.10.x` are currently supported by yt-dlp. / requis par certaines plateformes de streaming pour yt-dlp. Seules les versions `0.5.10` ou `0.10.x` sont actuellement supportées par yt-dlp. `pip install -r requirements.txt`
+- Optional / optionnel : [deno](https://deno.com/) (must be available in your system `PATH`) — lets yt-dlp automatically retry past some bot-check walls. / (doit être disponible dans le `PATH` du système) — permet à yt-dlp de retenter automatiquement face à certaines vérifications anti-bot.
 
 ## Usage / Utilisation
 
@@ -38,8 +39,8 @@ The app detects available dependencies at startup and shows their status on the 
 
 ## Known limitation / Limitation connue
 
-- **EN**: Some streaming platforms require a bot-check verification (e.g. a sign-in confirmation) for certain videos. This tool deliberately does not attempt to bypass it, as doing so would require exposing the user's browser session cookies — a security risk this project chooses not to introduce. Affected videos cannot be downloaded through this tool.
-- **FR** : Certaines plateformes de streaming exigent une vérification anti-bot (par exemple une confirmation de connexion) pour certaines vidéos. Cet outil ne tente volontairement pas de la contourner, car cela nécessiterait d'exposer les cookies de session du navigateur de l'utilisateur — un risque de sécurité que ce projet choisit de ne pas introduire. Les vidéos concernées ne peuvent pas être téléchargées avec cet outil.
+- **EN**: Some streaming platforms require a bot-check verification (e.g. a sign-in confirmation) for certain videos. When `deno` is installed, the tool automatically retries once past some of these checks (via yt-dlp's official PO token solver, `--remote-components ejs:github`) — no browser cookies or session data are ever involved. This retry is not guaranteed to succeed for every video, and the tool deliberately never falls back to browser cookies to bypass it further, as that would require exposing the user's session tokens — a security risk this project chooses not to introduce. Videos still blocked after the retry (or without `deno` installed) cannot be downloaded through this tool.
+- **FR** : Certaines plateformes de streaming exigent une vérification anti-bot (par exemple une confirmation de connexion) pour certaines vidéos. Lorsque `deno` est installé, l'outil retente automatiquement une fois de passer certaines de ces vérifications (via le résolveur de challenge PO token officiel de yt-dlp, `--remote-components ejs:github`) — aucun cookie ni donnée de session du navigateur n'est jamais utilisé. Cette nouvelle tentative n'est pas garantie de réussir pour toutes les vidéos, et l'outil ne recourt volontairement jamais aux cookies du navigateur pour aller plus loin, car cela nécessiterait d'exposer les jetons de session de l'utilisateur — un risque de sécurité que ce projet choisit de ne pas introduire. Les vidéos toujours bloquées après cette tentative (ou sans `deno` installé) ne peuvent pas être téléchargées avec cet outil.
 
 ## License / Licence
 

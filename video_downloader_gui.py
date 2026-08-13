@@ -21,9 +21,18 @@ DEFAULT_LANGUAGE = "en"
 FFMPEG_EXE = shutil.which("ffmpeg")
 FFPROBE_EXE = shutil.which("ffprobe")
 YTDLP_EXE = shutil.which("yt-dlp")
+DENO_EXE = shutil.which("deno")
 
 CURL_CFFI_COMPATIBLE_VERSIONS = ("0.5.10", "0.10.")
 CURL_CFFI_RECOMMENDED_VERSION = "0.10.0"
+
+# Retried automatically (via deno) only when a first attempt hits a bot-check wall, to avoid
+# the extra latency/network fetch on every download.
+BOT_BYPASS_ARGS = ["--remote-components", "ejs:github"]
+
+
+def is_deno_available() -> bool:
+    return bool(DENO_EXE)
 
 TRANSLATIONS = {
     "en": {
@@ -47,6 +56,7 @@ TRANSLATIONS = {
         "requirement_ytdlp": "- yt-dlp installed: ",
         "requirement_ffmpeg": "- FFmpeg installed: ",
         "requirement_curl_cffi": "- curl_cffi installed (needed by some streaming platforms): ",
+        "requirement_deno": "- deno installed (allows retrying past some bot-check walls): ",
         "status_ok": "OK",
         "status_missing": "No",
         "status_missing_optional": "Not installed",
@@ -99,6 +109,7 @@ TRANSLATIONS = {
             "This platform requires a bot-check verification (e.g. sign-in confirmation) "
             "that this script cannot pass. Try again later or with another video."
         ),
+        "summary_bot_bypass_used": "Note: a bot-check verification was bypassed for this download (via deno).",
         "summary_elapsed": "Operation duration: {elapsed}",
         "button_new_video": "New video",
         "button_quit": "Quit",
@@ -131,6 +142,7 @@ TRANSLATIONS = {
         "requirement_ytdlp": "- YT-DLP installé : ",
         "requirement_ffmpeg": "- FFmpeg installé : ",
         "requirement_curl_cffi": "- curl_cffi installé (nécessaire pour certaines plateformes de streaming) : ",
+        "requirement_deno": "- deno installé (permet de contourner certaines vérifications anti-bot) : ",
         "status_ok": "OK",
         "status_missing": "Non",
         "status_missing_optional": "Non installé",
@@ -183,6 +195,7 @@ TRANSLATIONS = {
             "Cette plateforme exige une vérification anti-bot (par exemple une confirmation de "
             "connexion) que ce script ne peut pas passer. Réessayer plus tard ou avec une autre vidéo."
         ),
+        "summary_bot_bypass_used": "Remarque : une vérification anti-bot a été contournée pour ce téléchargement (via deno).",
         "summary_elapsed": "Durée de l'opération : {elapsed}",
         "button_new_video": "Nouvelle vidéo",
         "button_quit": "Quitter",
@@ -337,16 +350,19 @@ def codec_short_label(codec: str) -> str:
 
 
 def ytdlp_fetch_info(url: str):
-    """Returns (title, duration_string, video_formats, audio_formats) via yt-dlp -j.
+    """Returns (title, duration_string, video_formats, audio_formats, used_bot_bypass) via yt-dlp -j.
 
-    video_formats and audio_formats are lists of (format_id, label).
+    video_formats and audio_formats are lists of (format_id, label). If the first attempt hits a
+    bot-check wall and deno is available, automatically retries once with BOT_BYPASS_ARGS.
     """
-    result = subprocess.run(
-        [YTDLP_EXE, "-j", "--skip-download", url],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    command = [YTDLP_EXE, "-j", "--skip-download", url]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+    used_bot_bypass = False
+
+    if not result.stdout.strip() and is_bot_check_error(result.stderr or "") and is_deno_available():
+        used_bot_bypass = True
+        result = subprocess.run(command[:1] + BOT_BYPASS_ARGS + command[1:], capture_output=True, text=True, timeout=90)
+
     if not result.stdout.strip():
         error_lines = [line for line in (result.stderr or "").splitlines() if line.strip()]
         raise RuntimeError(error_lines[-1] if error_lines else "yt-dlp returned no data")
@@ -380,7 +396,7 @@ def ytdlp_fetch_info(url: str):
             extension = entry.get("ext", "").upper()
             audio_formats.append((format_id, f"{quality} ({extension})"))
 
-    return title, duration_string, video_formats, audio_formats
+    return title, duration_string, video_formats, audio_formats, used_bot_bypass
 
 
 class VideosDownloaderApp:
@@ -396,6 +412,7 @@ class VideosDownloaderApp:
         self.use_ytdlp = False
         self.download_process = None
         self.download_cancelled = False
+        self.used_bot_bypass = False
 
         self.show_intro_step()
 
@@ -526,6 +543,16 @@ class VideosDownloaderApp:
             curl_cffi_line, text=curl_cffi_status_text, fg=curl_cffi_status_color, font=("Segoe UI", 10, "bold")
         ).pack(side="left")
 
+        deno_ok = is_deno_available()
+        deno_status_text = self.t("status_ok") if deno_ok else self.t("status_missing_optional")
+        deno_status_color = "green" if deno_ok else "#b8860b"
+        deno_line = tk.Frame(requirements_frame)
+        deno_line.pack(anchor="w", pady=(4, 0))
+        tk.Label(deno_line, text=self.t("requirement_deno")).pack(side="left")
+        tk.Label(
+            deno_line, text=deno_status_text, fg=deno_status_color, font=("Segoe UI", 10, "bold")
+        ).pack(side="left")
+
         if ytdlp_ok or ffmpeg_ok:
             buttons_frame = tk.Frame(frame)
             buttons_frame.pack(pady=(8, 0))
@@ -551,6 +578,7 @@ class VideosDownloaderApp:
 
     def start_download_flow(self, use_ytdlp: bool) -> None:
         self.use_ytdlp = use_ytdlp
+        self.used_bot_bypass = False
         self.show_url_step()
 
     # ---------- Step 2: video URL ----------
@@ -610,7 +638,7 @@ class VideosDownloaderApp:
         self.root.update()
 
         try:
-            title, duration_string, video_formats, audio_formats = ytdlp_fetch_info(self.video_url)
+            title, duration_string, video_formats, audio_formats, used_bot_bypass = ytdlp_fetch_info(self.video_url)
         except Exception as error:
             if is_bot_check_error(str(error)):
                 messagebox.showerror(self.t("app_title"), self.t("summary_error_bot_check_hint"))
@@ -618,6 +646,9 @@ class VideosDownloaderApp:
                 messagebox.showerror(self.t("app_title"), self.t("error_analyze", error=error))
             self.show_url_step()
             return
+
+        if used_bot_bypass:
+            self.used_bot_bypass = True
 
         self.show_ytdlp_options_step(title, duration_string, video_formats, audio_formats)
 
@@ -689,17 +720,20 @@ class VideosDownloaderApp:
     def run_ytdlp_download(self, destination: str, video_format_id, audio_format_id) -> None:
         remove_leftover_part_files(destination)
 
-        command = [YTDLP_EXE, "-o", destination, "--no-continue", "--newline"]
+        base_command = [YTDLP_EXE, "-o", destination, "--no-continue", "--newline"]
         if video_format_id and audio_format_id:
-            command += ["-f", f"{video_format_id}+{audio_format_id}"]
+            base_command += ["-f", f"{video_format_id}+{audio_format_id}"]
         elif video_format_id:
-            command += ["-f", f"{video_format_id}+bestaudio"]
+            base_command += ["-f", f"{video_format_id}+bestaudio"]
         elif audio_format_id:
-            command += ["-f", f"bestvideo+{audio_format_id}"]
-        command += ["--merge-output-format", "mp4", self.video_url]
+            base_command += ["-f", f"bestvideo+{audio_format_id}"]
+        base_command += ["--merge-output-format", "mp4", self.video_url]
 
+        self.run_ytdlp_download_attempt(destination, base_command, allow_bot_bypass_retry=True)
+
+    def run_ytdlp_download_attempt(self, destination: str, base_command, allow_bot_bypass_retry: bool) -> None:
         process = subprocess.Popen(
-            command,
+            base_command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -710,6 +744,11 @@ class VideosDownloaderApp:
             success = returncode == 0 and os.path.exists(destination)
             error_message = ""
             if not success and not self.download_cancelled:
+                if allow_bot_bypass_retry and is_bot_check_error(stderr_text or "") and is_deno_available():
+                    self.used_bot_bypass = True
+                    retry_command = base_command[:1] + BOT_BYPASS_ARGS + base_command[1:]
+                    self.run_ytdlp_download_attempt(destination, retry_command, allow_bot_bypass_retry=False)
+                    return None  # signals run_download_with_progress that a retry took over
                 error_message = stderr_text.strip().splitlines()[-1] if stderr_text else self.t("error_unknown")
                 if is_bot_check_error(stderr_text or ""):
                     error_message += " " + self.t("summary_error_bot_check_hint")
@@ -888,7 +927,11 @@ class VideosDownloaderApp:
                 self.show_summary_step(False, destination, elapsed, "", cancelled=True)
                 return
 
-            success, error_message = on_finished(process.returncode, stderr_text)
+            result = on_finished(process.returncode, stderr_text)
+            if result is None:
+                # A retry (e.g. bot-check bypass) took over and already showed its own screen.
+                return
+            success, error_message = result
             self.show_summary_step(success, destination, elapsed, error_message)
 
         tick()
@@ -923,6 +966,9 @@ class VideosDownloaderApp:
             details.append(self.t("summary_error", error=error_message))
 
         details.append(self.t("summary_elapsed", elapsed=self.format_duration(elapsed)))
+
+        if success and self.used_bot_bypass:
+            details.append(self.t("summary_bot_bypass_used"))
 
         for line in details:
             tk.Label(frame, text=line, wraplength=WINDOW_WIDTH - 60, justify="left", anchor="w").pack(
