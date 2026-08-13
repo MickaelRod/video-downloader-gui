@@ -8,7 +8,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ![Video Downloader GUI - introduction screen](intro-screen.png)
-![Video Downloader GUI - download options screen](download_options.png)
+![Video Downloader GUI - download options screen](download-options.png)
 
 ## Disclaimer / Avertissement
 
