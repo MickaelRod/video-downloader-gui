@@ -67,6 +67,7 @@ TRANSLATIONS = {
         "button_close": "Close",
         "step_video_link_title": "Video link",
         "url_label": "Enter the URL of the video to download:",
+        "url_label_playlist_capable": "Enter the URL of the video or playlist to download:",
         "button_continue": "Continue",
         "button_back": "Back",
         "error_no_link": "Video link not provided",
@@ -75,7 +76,11 @@ TRANSLATIONS = {
         "error_link_unreachable": "Could not access the video: {reason}",
         "step_analyzing_title": "Analyzing video...",
         "analyzing_message": "Retrieving video information, please wait.",
+        "step_analyzing_link_title": "Analyzing link...",
+        "analyzing_link_message": "Checking the link, please wait.",
         "error_analyze": "Could not analyze the video: {error}",
+        "step_playlist_title": "Playlist",
+        "playlist_message": "This link points to a playlist of {count} videos. Select a video to download:",
         "step_options_title": "Download options",
         "duration_label": "Video duration: {duration}",
         "duration_unknown": "unknown",
@@ -154,6 +159,7 @@ TRANSLATIONS = {
         "button_close": "Fermer",
         "step_video_link_title": "Lien de la vidéo",
         "url_label": "Indiquer l'URL de la vidéo à télécharger :",
+        "url_label_playlist_capable": "Indiquer l'URL de la vidéo ou de la playlist à télécharger :",
         "button_continue": "Continuer",
         "button_back": "Retour",
         "error_no_link": "Lien vers la vidéo non précisé",
@@ -162,7 +168,11 @@ TRANSLATIONS = {
         "error_link_unreachable": "Impossible d'accéder à la vidéo : {reason}",
         "step_analyzing_title": "Analyse de la vidéo...",
         "analyzing_message": "Récupération des informations de la vidéo, patienter.",
+        "step_analyzing_link_title": "Analyse du lien...",
+        "analyzing_link_message": "Vérification du lien, patienter.",
         "error_analyze": "Impossible d'analyser la vidéo : {error}",
+        "step_playlist_title": "Playlist",
+        "playlist_message": "Ce lien pointe vers une playlist de {count} vidéos. Sélectionner une vidéo à télécharger :",
         "step_options_title": "Options de téléchargement",
         "duration_label": "Durée de la vidéo : {duration}",
         "duration_unknown": "inconnue",
@@ -349,6 +359,36 @@ VCODEC_LABELS = {
 def codec_short_label(codec: str) -> str:
     prefix = codec.split(".")[0].lower()
     return VCODEC_LABELS.get(prefix, prefix.upper())
+
+
+def ytdlp_fetch_playlist_entries(url: str):
+    """Returns a list of (title, entry_url) if `url` points to a playlist with more than one
+    video, or None if it is a single video (or the flat-playlist probe itself fails — in that
+    case the normal single-video analysis below will surface the real error).
+
+    Uses --flat-playlist so this stays fast: it does not resolve formats for every video.
+    """
+    command = [YTDLP_EXE, "-j", "--flat-playlist", "--skip-download", url]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        return None
+
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    if len(lines) <= 1:
+        return None
+
+    entries = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        entry_url = entry.get("webpage_url") or entry.get("url")
+        if entry_url:
+            entries.append((entry.get("title", entry_url), entry_url))
+
+    return entries if len(entries) > 1 else None
 
 
 def ytdlp_fetch_info(url: str):
@@ -590,7 +630,8 @@ class VideosDownloaderApp:
     def show_url_step(self) -> None:
         frame = self.build_frame(self.t("step_video_link_title"))
 
-        tk.Label(frame, text=self.t("url_label")).pack(anchor="w")
+        url_label_key = "url_label_playlist_capable" if self.use_ytdlp else "url_label"
+        tk.Label(frame, text=self.t(url_label_key)).pack(anchor="w")
 
         url_entry = tk.Entry(frame, width=96)
         url_entry.pack(pady=(6, 16))
@@ -637,6 +678,18 @@ class VideosDownloaderApp:
     # ---------- Step 3a (yt-dlp): fetch info ----------
 
     def load_ytdlp_info(self) -> None:
+        frame = self.build_frame(self.t("step_analyzing_link_title"))
+        tk.Label(frame, text=self.t("analyzing_link_message"), wraplength=WINDOW_WIDTH - 60, justify="left").pack()
+        self.root.update()
+
+        playlist_entries = ytdlp_fetch_playlist_entries(self.video_url)
+        if playlist_entries:
+            self.show_playlist_step(playlist_entries)
+            return
+
+        self.load_ytdlp_single_video_info()
+
+    def load_ytdlp_single_video_info(self) -> None:
         frame = self.build_frame(self.t("step_analyzing_title"))
         tk.Label(frame, text=self.t("analyzing_message"), wraplength=WINDOW_WIDTH - 60, justify="left").pack()
         self.root.update()
@@ -655,6 +708,36 @@ class VideosDownloaderApp:
             self.used_bot_bypass = True
 
         self.show_ytdlp_options_step(title, duration_string, video_formats, audio_formats)
+
+    # ---------- Step 3a-bis (yt-dlp): playlist selection ----------
+
+    def show_playlist_step(self, entries) -> None:
+        frame = self.build_frame(self.t("step_playlist_title"))
+
+        tk.Label(
+            frame, text=self.t("playlist_message", count=len(entries)),
+            wraplength=WINDOW_WIDTH - 60, justify="left",
+        ).pack(anchor="w", pady=(0, 12))
+
+        entry_combo = ttk.Combobox(
+            frame, values=[entry_title for entry_title, _ in entries], width=91, state="readonly",
+        )
+        entry_combo.pack(pady=(0, 16))
+        entry_combo.current(0)
+
+        def on_select_entry(event=None):
+            selected_index = entry_combo.current()
+            if selected_index < 0:
+                return
+            self.video_url = entries[selected_index][1]
+            self.load_ytdlp_single_video_info()
+
+        buttons_frame = tk.Frame(frame)
+        buttons_frame.pack(pady=(12, 0))
+        tk.Button(buttons_frame, text=self.t("button_continue"), width=20, command=on_select_entry).pack(
+            side="left", padx=(0, 8)
+        )
+        tk.Button(buttons_frame, text=self.t("button_back"), width=20, command=self.show_url_step).pack(side="left")
 
     # ---------- Step 3b (yt-dlp): download options ----------
 
