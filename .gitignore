@@ -12,6 +12,9 @@ env/
 .DS_Store
 Thumbs.db
 
+# Claude Code project instructions (local only, never pushed)
+CLAUDE.md
+
 # Downloaded / leftover files (should never be committed)
 *.mp4
 *.mov

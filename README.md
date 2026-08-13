@@ -7,8 +7,8 @@
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-![Video Downloader GUI - introduction screen](intro-screen.png)
-![Video Downloader GUI - download options screen](download-options.png)
+![Video Downloader GUI - introduction screen](docs/intro-screen.png)
+![Video Downloader GUI - download options screen](docs/download-options.png)
 
 ## Disclaimer / Avertissement
 
