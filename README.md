@@ -1,6 +1,8 @@
 # Video Downloader GUI
 
-Windows GUI (Python/Tkinter) to download videos, including many streaming platforms, via yt-dlp or ffmpeg with format selection. | Interface graphique Windows (Python/Tkinter) pour télécharger des vidéos, de nombreuses plateformes de streaming comprises, via yt-dlp ou ffmpeg avec choix des formats.
+**EN** — Windows GUI (Python/Tkinter) to download videos, including many streaming platforms, via yt-dlp or ffmpeg with format selection.
+
+**FR** — Interface graphique Windows (Python/Tkinter) pour télécharger des vidéos, de nombreuses plateformes de streaming comprises, via yt-dlp ou ffmpeg avec choix des formats.
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -9,9 +11,8 @@ Windows GUI (Python/Tkinter) to download videos, including many streaming platfo
 
 ## Disclaimer / Avertissement
 
-**EN** — Only download videos you own the rights to, that are in the public domain, or that the copyright holder allows you to download (e.g. under a Creative Commons license or explicit permission). Respect the terms of service of the platform you download from. You are solely responsible for how you use this tool.
-
-**FR** — Ne télécharger que des vidéos dont vous détenez les droits, qui sont dans le domaine public, ou dont l'ayant droit autorise le téléchargement (par exemple sous licence Creative Commons ou avec une autorisation explicite). Respecter les conditions d'utilisation de la plateforme depuis laquelle vous téléchargez. Vous êtes seul responsable de l'usage que vous faites de cet outil.
+- **EN**: Only download videos you own the rights to, that are in the public domain, or that the copyright holder allows you to download (e.g. under a Creative Commons license or explicit permission). Respect the terms of service of the platform you download from. You are solely responsible for how you use this tool.
+- **FR** : Ne télécharger que des vidéos dont vous détenez les droits, qui sont dans le domaine public, ou dont l'ayant droit autorise le téléchargement (par exemple sous licence Creative Commons ou avec une autorisation explicite). Respecter les conditions d'utilisation de la plateforme depuis laquelle vous téléchargez. Vous êtes seul responsable de l'usage que vous faites de cet outil.
 
 ## Features / Fonctionnalités
 
