@@ -6,6 +6,7 @@
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![Tests](https://github.com/MickaelRod/video-downloader-gui/actions/workflows/tests.yml/badge.svg)
 
 ![Video Downloader GUI - introduction screen](docs/intro-screen.png)
 ![Video Downloader GUI - download options screen](docs/download-options.png)
@@ -36,6 +37,11 @@ python video_downloader_gui.py
 ```
 
 The app detects available dependencies at startup and shows their status on the introduction screen. / L'application détecte les dépendances disponibles au démarrage et affiche leur statut sur l'écran d'introduction.
+
+## Development / Développement
+
+- **EN**: `pip install -r requirements-dev.txt` then `python -m pytest` runs the unit test suite covering the pure helper functions (filename sanitization, progress parsing, etc.). Tests run automatically on GitHub Actions for every push and pull request.
+- **FR** : `pip install -r requirements-dev.txt` puis `python -m pytest` exécute la suite de tests unitaires couvrant les fonctions utilitaires pures (nettoyage de nom de fichier, analyse de la progression, etc.). Les tests s'exécutent automatiquement via GitHub Actions à chaque push et pull request.
 
 ## Known limitation / Limitation connue
 
