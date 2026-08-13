@@ -16,8 +16,8 @@
 
 ## Features / Fonctionnalités
 
-- **EN**: Bilingual GUI (English/French), two download engines (yt-dlp for streaming platforms with video/audio format selection, ffmpeg for direct video file links), link validation, duplicate filename protection, download summary (size, duration, location, elapsed time).
-- **FR** : Interface bilingue (anglais/français), deux moteurs de téléchargement (yt-dlp pour les plateformes de streaming avec choix des formats vidéo/audio, ffmpeg pour les liens directs vers un fichier vidéo), vérification du lien, protection contre l'écrasement de fichiers, récapitulatif du téléchargement (taille, durée, emplacement, durée de l'opération).
+- **EN**: Bilingual GUI (English/French), two download engines (yt-dlp for streaming platforms with video/audio format selection, ffmpeg for direct video file links), link validation, duplicate filename protection, editable destination folder, live progress bar with cancel button, download summary (size, duration, location, elapsed time).
+- **FR** : Interface bilingue (anglais/français), deux moteurs de téléchargement (yt-dlp pour les plateformes de streaming avec choix des formats vidéo/audio, ffmpeg pour les liens directs vers un fichier vidéo), vérification du lien, protection contre l'écrasement de fichiers, dossier de destination modifiable, barre de progression en temps réel avec bouton d'annulation, récapitulatif du téléchargement (taille, durée, emplacement, durée de l'opération).
 
 ## Requirements / Prérequis
 
@@ -34,6 +34,11 @@ python video_downloader_gui.py
 ```
 
 The app detects available dependencies at startup and shows their status on the introduction screen. / L'application détecte les dépendances disponibles au démarrage et affiche leur statut sur l'écran d'introduction.
+
+## Known limitation / Limitation connue
+
+- **EN**: Some streaming platforms require a bot-check verification (e.g. a sign-in confirmation) for certain videos. This tool deliberately does not attempt to bypass it, as doing so would require exposing the user's browser session cookies — a security risk this project chooses not to introduce. Affected videos cannot be downloaded through this tool.
+- **FR** : Certaines plateformes de streaming exigent une vérification anti-bot (par exemple une confirmation de connexion) pour certaines vidéos. Cet outil ne tente volontairement pas de la contourner, car cela nécessiterait d'exposer les cookies de session du navigateur de l'utilisateur — un risque de sécurité que ce projet choisit de ne pas introduire. Les vidéos concernées ne peuvent pas être téléchargées avec cet outil.
 
 ## License / Licence
 

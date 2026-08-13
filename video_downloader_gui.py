@@ -2,13 +2,15 @@
 
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
+import threading
 import time
 import tkinter as tk
 import urllib.request
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 from urllib.error import HTTPError, URLError
 
 APP_TITLE = "VIDEO DOWNLOADER GUI"
@@ -78,9 +80,12 @@ TRANSLATIONS = {
         "error_unknown": "Unknown error",
         "step_filename_title": "Video name",
         "filename_label": "Video file name (leave blank for \"{default}\"):",
+        "folder_label": "Destination folder:",
+        "button_browse": "Browse...",
         "step_summary_title": "Summary",
         "status_success": "Download successful",
         "status_failure": "Download failed",
+        "status_cancelled": "Download cancelled",
         "summary_name": "Video name: {name}",
         "summary_size": "Video size: {size}",
         "summary_location": "Location: {location}",
@@ -90,9 +95,16 @@ TRANSLATIONS = {
             "This may be caused by curl_cffi being missing or incompatible with yt-dlp. "
             "Install a compatible version, e.g.: pip install curl_cffi=={version}"
         ),
+        "summary_error_bot_check_hint": (
+            "This platform requires a bot-check verification (e.g. sign-in confirmation) "
+            "that this script cannot pass. Try again later or with another video."
+        ),
         "summary_elapsed": "Operation duration: {elapsed}",
         "button_new_video": "New video",
         "button_quit": "Quit",
+        "button_cancel": "Cancel",
+        "progress_percent": "{percent:.0f}%",
+        "progress_unknown": "Downloading...",
         "unit_hour_min_sec": "{hours}h {minutes:02d}min {seconds:02d}s",
         "unit_min_sec": "{minutes}min {seconds:02d}s",
         "unit_sec": "{seconds}s",
@@ -152,9 +164,12 @@ TRANSLATIONS = {
         "error_unknown": "Erreur inconnue",
         "step_filename_title": "Nom de la vidéo",
         "filename_label": "Nom du fichier vidéo (laisser vide pour \"{default}\") :",
+        "folder_label": "Dossier de destination :",
+        "button_browse": "Parcourir...",
         "step_summary_title": "Récapitulatif",
         "status_success": "Téléchargement réussi",
         "status_failure": "Échec du téléchargement",
+        "status_cancelled": "Téléchargement annulé",
         "summary_name": "Nom de la vidéo : {name}",
         "summary_size": "Taille de la vidéo : {size}",
         "summary_location": "Emplacement : {location}",
@@ -164,9 +179,16 @@ TRANSLATIONS = {
             "Cela peut être dû à curl_cffi absent ou incompatible avec yt-dlp. "
             "Installer une version compatible, par exemple : pip install curl_cffi=={version}"
         ),
+        "summary_error_bot_check_hint": (
+            "Cette plateforme exige une vérification anti-bot (par exemple une confirmation de "
+            "connexion) que ce script ne peut pas passer. Réessayer plus tard ou avec une autre vidéo."
+        ),
         "summary_elapsed": "Durée de l'opération : {elapsed}",
         "button_new_video": "Nouvelle vidéo",
         "button_quit": "Quitter",
+        "button_cancel": "Annuler",
+        "progress_percent": "{percent:.0f} %",
+        "progress_unknown": "Téléchargement en cours...",
         "unit_hour_min_sec": "{hours}h {minutes:02d}min {seconds:02d}s",
         "unit_min_sec": "{minutes}min {seconds:02d}s",
         "unit_sec": "{seconds}s",
@@ -217,6 +239,11 @@ def is_curl_cffi_related_error(error_text: str) -> bool:
     return "curl_cffi" in lowered or "impersonate" in lowered
 
 
+def is_bot_check_error(error_text: str) -> bool:
+    lowered = error_text.lower()
+    return "sign in to confirm" in lowered or "confirm you're not a bot" in lowered
+
+
 def check_video_url(url: str) -> None:
     """Raises an exception if the URL is empty or does not point to an existing resource."""
     request = urllib.request.Request(url, method="HEAD")
@@ -252,6 +279,26 @@ def format_file_size(num_bytes: float) -> str:
             return f"{num_bytes:.1f} {unit}" if unit != "B" else f"{int(num_bytes)} {unit}"
         num_bytes /= 1024
     return f"{num_bytes:.1f} GB"
+
+
+YTDLP_PROGRESS_RE = re.compile(r"\[download\]\s+(\d{1,3}(?:\.\d+)?)%")
+FFMPEG_TIME_RE = re.compile(r"out_time_ms=(\d+)")
+
+
+def parse_ytdlp_progress_line(line: str):
+    match = YTDLP_PROGRESS_RE.search(line)
+    return float(match.group(1)) if match else None
+
+
+def parse_ffmpeg_progress_line(line: str, total_duration):
+    """Returns a percentage (0-100) from an ffmpeg `-progress pipe:1` line, or None."""
+    if total_duration is None or total_duration <= 0:
+        return None
+    match = FFMPEG_TIME_RE.match(line)
+    if not match:
+        return None
+    elapsed_seconds = int(match.group(1)) / 1_000_000
+    return max(0.0, min(100.0, elapsed_seconds / total_duration * 100))
 
 
 def get_video_duration(filepath: str):
@@ -345,7 +392,10 @@ class VideosDownloaderApp:
 
         self.video_url = ""
         self.video_name = DEFAULT_FILENAME_STEM + ".mp4"
+        self.download_folder = get_downloads_folder()
         self.use_ytdlp = False
+        self.download_process = None
+        self.download_cancelled = False
 
         self.show_intro_step()
 
@@ -377,6 +427,31 @@ class VideosDownloaderApp:
         tk.Frame(frame, width=WINDOW_WIDTH - 48, height=1).pack()
         tk.Label(frame, text=title, font=("Segoe UI", 14, "bold")).pack(pady=(0, 12))
         return frame
+
+    def build_folder_picker(self, frame: tk.Frame) -> None:
+        """Adds a destination folder label + entry + Browse button to `frame`, bound to self.download_folder."""
+        tk.Label(frame, text=self.t("folder_label")).pack(anchor="w")
+
+        folder_row = tk.Frame(frame)
+        folder_row.pack(fill="x", pady=(6, 16))
+
+        folder_entry = tk.Entry(folder_row, width=76)
+        folder_entry.pack(side="left", fill="x", expand=True)
+        folder_entry.insert(0, self.download_folder)
+
+        def on_change(event=None):
+            self.download_folder = folder_entry.get().strip() or get_downloads_folder()
+
+        folder_entry.bind("<FocusOut>", on_change)
+
+        def on_browse():
+            chosen = filedialog.askdirectory(initialdir=self.download_folder or get_downloads_folder())
+            if chosen:
+                self.download_folder = chosen
+                folder_entry.delete(0, tk.END)
+                folder_entry.insert(0, chosen)
+
+        tk.Button(folder_row, text=self.t("button_browse"), command=on_browse).pack(side="left", padx=(8, 0))
 
     # ---------- Step 1: introduction ----------
 
@@ -537,7 +612,10 @@ class VideosDownloaderApp:
         try:
             title, duration_string, video_formats, audio_formats = ytdlp_fetch_info(self.video_url)
         except Exception as error:
-            messagebox.showerror(self.t("app_title"), self.t("error_analyze", error=error))
+            if is_bot_check_error(str(error)):
+                messagebox.showerror(self.t("app_title"), self.t("summary_error_bot_check_hint"))
+            else:
+                messagebox.showerror(self.t("app_title"), self.t("error_analyze", error=error))
             self.show_url_step()
             return
 
@@ -553,6 +631,8 @@ class VideosDownloaderApp:
 
         if warning:
             tk.Label(frame, text=warning, fg="red", wraplength=WINDOW_WIDTH - 60, justify="left").pack(pady=(0, 12))
+
+        self.build_folder_picker(frame)
 
         tk.Label(frame, text=self.t("duration_label", duration=duration_string or self.t("duration_unknown"))).pack(
             anchor="w", pady=(0, 12)
@@ -586,7 +666,7 @@ class VideosDownloaderApp:
             video_format_id = video_formats[video_index][0] if video_index >= 0 else None
             audio_format_id = audio_formats[audio_index][0] if audio_index >= 0 else None
 
-            destination = os.path.join(get_downloads_folder(), self.video_name)
+            destination = os.path.join(self.download_folder, self.video_name)
             if os.path.exists(destination):
                 self.show_ytdlp_options_step(
                     title, duration_string, video_formats, audio_formats,
@@ -607,18 +687,9 @@ class VideosDownloaderApp:
         tk.Button(buttons_frame, text=self.t("button_back"), width=20, command=self.show_url_step).pack(side="left")
 
     def run_ytdlp_download(self, destination: str, video_format_id, audio_format_id) -> None:
-        frame = self.build_frame(self.t("step_downloading_title"))
-        tk.Label(frame, text=self.t("downloading_message", name=self.video_name),
-                 wraplength=WINDOW_WIDTH - 60, justify="left").pack()
-        self.root.update()
-
-        start_time = time.time()
-        success = False
-        error_message = ""
-
         remove_leftover_part_files(destination)
 
-        command = [YTDLP_EXE, "-o", destination, "--no-continue"]
+        command = [YTDLP_EXE, "-o", destination, "--no-continue", "--newline"]
         if video_format_id and audio_format_id:
             command += ["-f", f"{video_format_id}+{audio_format_id}"]
         elif video_format_id:
@@ -627,20 +698,28 @@ class VideosDownloaderApp:
             command += ["-f", f"bestvideo+{audio_format_id}"]
         command += ["--merge-output-format", "mp4", self.video_url]
 
-        try:
-            result = subprocess.run(command, capture_output=True, text=True)
-            success = result.returncode == 0 and os.path.exists(destination)
-            if not success:
-                error_message = result.stderr.strip().splitlines()[-1] if result.stderr else self.t("error_unknown")
-                if is_curl_cffi_related_error(result.stderr or ""):
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+
+        def on_finished(returncode: int, stderr_text: str):
+            success = returncode == 0 and os.path.exists(destination)
+            error_message = ""
+            if not success and not self.download_cancelled:
+                error_message = stderr_text.strip().splitlines()[-1] if stderr_text else self.t("error_unknown")
+                if is_bot_check_error(stderr_text or ""):
+                    error_message += " " + self.t("summary_error_bot_check_hint")
+                elif is_curl_cffi_related_error(stderr_text or ""):
                     error_message += " " + self.t(
                         "summary_error_curl_cffi_hint", version=CURL_CFFI_RECOMMENDED_VERSION
                     )
-        except Exception as error:
-            error_message = str(error)
+            return success, error_message
 
-        elapsed = time.time() - start_time
-        self.show_summary_step(success, destination, elapsed, error_message)
+        self.run_download_with_progress(process, destination, parse_ytdlp_progress_line, on_finished)
 
     # ---------- Step 3 (ffmpeg): file name ----------
 
@@ -650,16 +729,18 @@ class VideosDownloaderApp:
         if warning:
             tk.Label(frame, text=warning, fg="red", wraplength=WINDOW_WIDTH - 60, justify="left").pack(pady=(0, 12))
 
+        self.build_folder_picker(frame)
+
         default_filename = DEFAULT_FILENAME_STEM + ".mp4"
         tk.Label(frame, text=self.t("filename_label", default=default_filename)).pack(anchor="w")
 
         name_entry = tk.Entry(frame, width=90)
-        name_entry.pack(pady=(6, 16))
+        name_entry.pack(anchor="w", pady=(6, 16))
         name_entry.focus_set()
 
         def on_download(event=None):
             filename = ensure_mp4_extension(name_entry.get())
-            destination = os.path.join(get_downloads_folder(), filename)
+            destination = os.path.join(self.download_folder, filename)
 
             if os.path.exists(destination):
                 self.show_filename_step(
@@ -674,37 +755,157 @@ class VideosDownloaderApp:
         tk.Button(frame, text=self.t("button_download"), width=20, command=on_download).pack()
 
     def run_ffmpeg_download(self, destination: str) -> None:
+        process = subprocess.Popen(
+            [FFMPEG_EXE, "-y", "-i", self.video_url, "-c", "copy", "-progress", "pipe:1", "-nostats", destination],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+
+        # Fetched on a background thread so a slow/unreachable ffprobe never delays showing
+        # the downloading screen or blocks the Tkinter main loop.
+        total_duration_holder = {"value": None}
+        threading.Thread(
+            target=lambda: total_duration_holder.__setitem__("value", get_video_duration(self.video_url)),
+            daemon=True,
+        ).start()
+
+        def parse_progress_line(line: str):
+            return parse_ffmpeg_progress_line(line, total_duration_holder["value"])
+
+        def on_finished(returncode: int, stderr_text: str):
+            success = returncode == 0
+            error_message = ""
+            if not success and not self.download_cancelled:
+                error_message = stderr_text.strip().splitlines()[-1] if stderr_text else self.t("error_unknown")
+            return success, error_message
+
+        self.run_download_with_progress(process, destination, parse_progress_line, on_finished)
+
+    # ---------- Downloading screen with progress bar ----------
+
+    def run_download_with_progress(self, process, destination, parse_progress_line, on_finished) -> None:
+        """Drives a download subprocess to completion while updating a progress bar.
+
+        stdout is read on a background thread (subprocess pipes are blocking) and fed into a
+        queue so the Tkinter main loop never blocks. `parse_progress_line(line)` must return a
+        percentage (0-100) or None. `on_finished(returncode, stderr_text)` is called once the
+        process exits and must return (success, error_message).
+        """
         frame = self.build_frame(self.t("step_downloading_title"))
         tk.Label(frame, text=self.t("downloading_message", name=self.video_name),
-                 wraplength=WINDOW_WIDTH - 60, justify="left").pack()
-        self.root.update()
+                 wraplength=WINDOW_WIDTH - 60, justify="left").pack(pady=(0, 12))
 
+        progress_bar = ttk.Progressbar(frame, length=WINDOW_WIDTH - 60, mode="determinate", maximum=100)
+        progress_bar.pack(pady=(0, 8))
+
+        progress_label = tk.Label(frame, text=self.t("progress_unknown"))
+        progress_label.pack(pady=(0, 12))
+
+        self.download_process = process
+        self.download_cancelled = False
         start_time = time.time()
-        success = False
-        error_message = ""
+        got_percent = False
 
-        try:
-            result = subprocess.run(
-                [FFMPEG_EXE, "-y", "-i", self.video_url, "-c", "copy", destination],
-                capture_output=True,
-                text=True,
-            )
-            success = result.returncode == 0
-            if not success:
-                error_message = result.stderr.strip().splitlines()[-1] if result.stderr else self.t("error_unknown")
-        except Exception as error:
-            error_message = str(error)
+        line_queue = queue.Queue()
+        stderr_lines = []
 
-        elapsed = time.time() - start_time
-        self.show_summary_step(success, destination, elapsed, error_message)
+        def read_stdout():
+            for line in iter(process.stdout.readline, ""):
+                line_queue.put(line)
+            process.stdout.close()
+
+        def read_stderr():
+            # Must be drained continuously: on Windows, an unread stderr pipe fills up and
+            # blocks the subprocess entirely (including its stdout writes) once ffmpeg/yt-dlp
+            # produces enough stderr output (e.g. ffmpeg's HLS warnings).
+            for line in iter(process.stderr.readline, ""):
+                stderr_lines.append(line)
+            process.stderr.close()
+
+        stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+        stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+        stdout_thread.start()
+        stderr_thread.start()
+
+        def on_cancel():
+            self.download_cancelled = True
+            cancel_button.config(state="disabled")
+            try:
+                process.terminate()
+            except OSError:
+                pass
+
+        cancel_button = tk.Button(frame, text=self.t("button_cancel"), width=20, command=on_cancel)
+        cancel_button.pack()
+
+        INDETERMINATE_FALLBACK_MS = 3000
+
+        def switch_to_indeterminate():
+            if got_percent or process.poll() is not None:
+                return
+            progress_bar.config(mode="indeterminate")
+            progress_bar.start(15)
+
+        self.root.after(INDETERMINATE_FALLBACK_MS, switch_to_indeterminate)
+
+        def tick():
+            nonlocal got_percent
+            try:
+                while True:
+                    line = line_queue.get_nowait()
+                    percent = parse_progress_line(line)
+                    if percent is not None:
+                        if not got_percent:
+                            got_percent = True
+                            progress_bar.stop()
+                            progress_bar.config(mode="determinate")
+                        progress_bar["value"] = percent
+                        progress_label.config(text=self.t("progress_percent", percent=percent))
+            except queue.Empty:
+                pass
+
+            if process.poll() is None:
+                self.root.after(50, tick)
+                return
+
+            progress_bar.stop()
+
+            stdout_thread.join(timeout=2)
+            stderr_thread.join(timeout=2)
+            stderr_text = "".join(stderr_lines)
+            self.download_process = None
+            elapsed = time.time() - start_time
+
+            if self.download_cancelled:
+                remove_leftover_part_files(destination)
+                if os.path.exists(destination):
+                    try:
+                        os.remove(destination)
+                    except OSError:
+                        pass
+                self.show_summary_step(False, destination, elapsed, "", cancelled=True)
+                return
+
+            success, error_message = on_finished(process.returncode, stderr_text)
+            self.show_summary_step(success, destination, elapsed, error_message)
+
+        tick()
 
     # ---------- Final step: summary ----------
 
-    def show_summary_step(self, success: bool, destination: str, elapsed: float, error_message: str) -> None:
+    def show_summary_step(
+        self, success: bool, destination: str, elapsed: float, error_message: str, cancelled: bool = False
+    ) -> None:
         frame = self.build_frame(self.t("step_summary_title"))
 
-        status_text = self.t("status_success") if success else self.t("status_failure")
-        status_color = "green" if success else "red"
+        if cancelled:
+            status_text = self.t("status_cancelled")
+            status_color = "#b8860b"
+        else:
+            status_text = self.t("status_success") if success else self.t("status_failure")
+            status_color = "green" if success else "red"
         tk.Label(frame, text=status_text, font=("Segoe UI", 11, "bold"), fg=status_color).pack(pady=(0, 12))
 
         details = [self.t("summary_name", name=self.video_name)]
@@ -718,7 +919,7 @@ class VideosDownloaderApp:
             )
             details.append(self.t("summary_location", location=destination))
             details.append(self.t("summary_duration", duration=duration))
-        else:
+        elif not cancelled:
             details.append(self.t("summary_error", error=error_message))
 
         details.append(self.t("summary_elapsed", elapsed=self.format_duration(elapsed)))
