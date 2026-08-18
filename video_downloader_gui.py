@@ -17,6 +17,10 @@ APP_TITLE = "VIDEO DOWNLOADER GUI"
 DEFAULT_FILENAME_STEM = "Video"
 WINDOW_WIDTH = 840
 DEFAULT_LANGUAGE = "en"
+BUTTON_FONT = ("Segoe UI", 11)
+BUTTON_WIDTH = 20
+BUTTON_PADX = 16
+BUTTON_PADY = 8
 
 FFMPEG_EXE = shutil.which("ffmpeg")
 FFPROBE_EXE = shutil.which("ffprobe")
@@ -298,6 +302,13 @@ def sanitize_filename(name: str) -> str:
     return name or DEFAULT_FILENAME_STEM
 
 
+URL_RE = re.compile(r"^https?://\S+$", re.IGNORECASE)
+
+
+def looks_like_url(text: str) -> bool:
+    return bool(URL_RE.match(text.strip()))
+
+
 def format_file_size(num_bytes: float) -> str:
     for unit in ("B", "KB", "MB", "GB"):
         if num_bytes < 1024 or unit == "GB":
@@ -489,6 +500,17 @@ class VideosDownloaderApp:
         tk.Label(frame, text=title, font=("Segoe UI", 14, "bold")).pack(pady=(0, 12))
         return frame
 
+    def make_button(self, parent: tk.Widget, text: str, command, default: bool = False) -> tk.Button:
+        """Creates a bigger, more ergonomic button. If `default` is True, pressing Enter
+        anywhere in the window (unless another widget consumes it) triggers this button."""
+        button = tk.Button(
+            parent, text=text, width=BUTTON_WIDTH, font=BUTTON_FONT, padx=BUTTON_PADX, pady=BUTTON_PADY,
+            command=command,
+        )
+        if default:
+            self.root.bind("<Return>", lambda event: command())
+        return button
+
     def build_folder_picker(self, frame: tk.Frame) -> None:
         """Adds a destination folder label + entry + Browse button to `frame`, bound to self.download_folder."""
         tk.Label(frame, text=self.t("folder_label")).pack(anchor="w")
@@ -512,7 +534,10 @@ class VideosDownloaderApp:
                 folder_entry.delete(0, tk.END)
                 folder_entry.insert(0, chosen)
 
-        tk.Button(folder_row, text=self.t("button_browse"), command=on_browse).pack(side="left", padx=(8, 0))
+        tk.Button(
+            folder_row, text=self.t("button_browse"), font=BUTTON_FONT, padx=BUTTON_PADX, pady=4,
+            command=on_browse,
+        ).pack(side="left", padx=(8, 0))
 
     # ---------- Step 1: introduction ----------
 
@@ -601,14 +626,14 @@ class VideosDownloaderApp:
             buttons_frame = tk.Frame(frame)
             buttons_frame.pack(pady=(8, 0))
             if ytdlp_ok:
-                tk.Button(
-                    buttons_frame, text=self.t("button_download_ytdlp"), width=22,
-                    command=lambda: self.start_download_flow(True)
+                self.make_button(
+                    buttons_frame, self.t("button_download_ytdlp"),
+                    lambda: self.start_download_flow(True), default=True,
                 ).pack(side="left", padx=(0, 8) if ffmpeg_ok else 0)
             if ffmpeg_ok:
-                tk.Button(
-                    buttons_frame, text=self.t("button_download_ffmpeg"), width=22,
-                    command=lambda: self.start_download_flow(False)
+                self.make_button(
+                    buttons_frame, self.t("button_download_ffmpeg"),
+                    lambda: self.start_download_flow(False), default=not ytdlp_ok,
                 ).pack(side="left")
         else:
             tk.Label(
@@ -618,7 +643,7 @@ class VideosDownloaderApp:
                 wraplength=WINDOW_WIDTH - 60,
                 justify="left",
             ).pack(pady=(0, 12))
-            tk.Button(frame, text=self.t("button_close"), width=24, command=self.root.destroy).pack()
+            self.make_button(frame, self.t("button_close"), self.root.destroy, default=True).pack()
 
     def start_download_flow(self, use_ytdlp: bool) -> None:
         self.use_ytdlp = use_ytdlp
@@ -637,6 +662,15 @@ class VideosDownloaderApp:
         url_entry.pack(pady=(6, 16))
         url_entry.insert(0, self.video_url)
         url_entry.focus_set()
+
+        try:
+            clipboard_text = self.root.clipboard_get().strip()
+        except tk.TclError:
+            clipboard_text = ""
+        if clipboard_text and clipboard_text != self.video_url and looks_like_url(clipboard_text):
+            url_entry.delete(0, tk.END)
+            url_entry.insert(0, clipboard_text)
+            url_entry.select_range(0, tk.END)
 
         def on_continue(event=None):
             self.video_url = url_entry.get().strip()
@@ -670,10 +704,10 @@ class VideosDownloaderApp:
 
         buttons_frame = tk.Frame(frame)
         buttons_frame.pack(pady=(4, 0))
-        tk.Button(buttons_frame, text=self.t("button_continue"), width=20, command=on_continue).pack(
+        self.make_button(buttons_frame, self.t("button_continue"), on_continue, default=True).pack(
             side="left", padx=(0, 8)
         )
-        tk.Button(buttons_frame, text=self.t("button_back"), width=20, command=self.show_intro_step).pack(side="left")
+        self.make_button(buttons_frame, self.t("button_back"), self.show_intro_step).pack(side="left")
 
     # ---------- Step 3a (yt-dlp): fetch info ----------
 
@@ -734,10 +768,10 @@ class VideosDownloaderApp:
 
         buttons_frame = tk.Frame(frame)
         buttons_frame.pack(pady=(12, 0))
-        tk.Button(buttons_frame, text=self.t("button_continue"), width=20, command=on_select_entry).pack(
+        self.make_button(buttons_frame, self.t("button_continue"), on_select_entry, default=True).pack(
             side="left", padx=(0, 8)
         )
-        tk.Button(buttons_frame, text=self.t("button_back"), width=20, command=self.show_url_step).pack(side="left")
+        self.make_button(buttons_frame, self.t("button_back"), self.show_url_step).pack(side="left")
 
     # ---------- Step 3b (yt-dlp): download options ----------
 
@@ -812,10 +846,10 @@ class VideosDownloaderApp:
 
         buttons_frame = tk.Frame(frame)
         buttons_frame.pack(pady=(8, 0))
-        tk.Button(buttons_frame, text=self.t("button_download"), width=20, command=on_download).pack(
+        self.make_button(buttons_frame, self.t("button_download"), on_download, default=True).pack(
             side="left", padx=(0, 8)
         )
-        tk.Button(buttons_frame, text=self.t("button_back"), width=20, command=self.show_url_step).pack(side="left")
+        self.make_button(buttons_frame, self.t("button_back"), self.show_url_step).pack(side="left")
 
     def run_ytdlp_download(self, destination: str, video_format_id, audio_format_id, audio_only: bool = False) -> None:
         remove_leftover_part_files(destination)
@@ -895,7 +929,7 @@ class VideosDownloaderApp:
             self.run_ffmpeg_download(destination)
 
         name_entry.bind("<Return>", on_download)
-        tk.Button(frame, text=self.t("button_download"), width=20, command=on_download).pack()
+        self.make_button(frame, self.t("button_download"), on_download, default=True).pack()
 
     def run_ffmpeg_download(self, destination: str) -> None:
         process = subprocess.Popen(
@@ -980,7 +1014,11 @@ class VideosDownloaderApp:
             except OSError:
                 pass
 
-        cancel_button = tk.Button(frame, text=self.t("button_cancel"), width=20, command=on_cancel)
+        self.root.unbind("<Return>")
+        cancel_button = tk.Button(
+            frame, text=self.t("button_cancel"), width=BUTTON_WIDTH, font=BUTTON_FONT,
+            padx=BUTTON_PADX, pady=BUTTON_PADY, command=on_cancel,
+        )
         cancel_button.pack()
 
         INDETERMINATE_FALLBACK_MS = 3000
@@ -1081,10 +1119,15 @@ class VideosDownloaderApp:
 
         buttons_frame = tk.Frame(frame)
         buttons_frame.pack(pady=(16, 0))
-        tk.Button(buttons_frame, text=self.t("button_new_video"), width=20, command=self.show_intro_step).pack(
+        self.make_button(buttons_frame, self.t("button_new_video"), self.start_new_video, default=True).pack(
             side="left", padx=(0, 8)
         )
-        tk.Button(buttons_frame, text=self.t("button_quit"), width=20, command=self.root.destroy).pack(side="left")
+        self.make_button(buttons_frame, self.t("button_quit"), self.root.destroy).pack(side="left")
+
+    def start_new_video(self) -> None:
+        self.video_url = ""
+        self.used_bot_bypass = False
+        self.show_url_step()
 
 
 def main() -> None:
