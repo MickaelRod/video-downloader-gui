@@ -7,14 +7,17 @@ import pytest
 from video_downloader_gui import (
     codec_short_label,
     ensure_mp4_extension,
+    find_transcript_files,
     format_file_size,
     get_downloads_folder,
     is_bot_check_error,
     is_curl_cffi_related_error,
+    is_forbidden_error,
     parse_ffmpeg_progress_line,
     parse_ytdlp_progress_line,
     remove_leftover_part_files,
     sanitize_filename,
+    select_transcript_languages,
 )
 
 
@@ -193,3 +196,49 @@ def test_remove_leftover_part_files_no_leftovers(tmp_path):
 
     remaining = {entry.name for entry in tmp_path.iterdir()}
     assert remaining == {"MyVideo.mp4"}
+
+
+# ---------- select_transcript_languages ----------
+
+def test_select_transcript_languages_manual_and_original_auto():
+    subtitles = {"en": []}
+    automatic = {"fr-orig": [], "fr": [], "de": [], "en": []}
+    assert select_transcript_languages(subtitles, automatic) == ["en", "fr-orig"]
+
+
+def test_select_transcript_languages_skips_original_already_manual():
+    assert select_transcript_languages({"fr": []}, {"fr-orig": []}) == ["fr"]
+
+
+def test_select_transcript_languages_ignores_live_chat_and_translations():
+    assert select_transcript_languages({"live_chat": []}, {"de": [], "es": []}) == []
+
+
+def test_select_transcript_languages_handles_none():
+    assert select_transcript_languages(None, None) == []
+
+
+# ---------- find_transcript_files ----------
+
+def test_find_transcript_files(tmp_path):
+    destination = tmp_path / "My Video.mp4"
+    for name in ("My Video.mp4", "My Video.fr.srt", "My Video.en.vtt", "My Video 2.fr.srt", "Other.fr.srt"):
+        (tmp_path / name).write_text("x")
+
+    assert find_transcript_files(str(destination)) == ["My Video.en.vtt", "My Video.fr.srt"]
+
+
+# ---------- is_forbidden_error ----------
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("ERROR: unable to download video data: HTTP Error 403: Forbidden", True),
+        ("Server returned 403 Forbidden (access denied)", True),
+        ("ERROR: HTTP Error 404: Not Found", False),
+        ("Forbidden by policy", False),
+        ("", False),
+    ],
+)
+def test_is_forbidden_error(text, expected):
+    assert is_forbidden_error(text) is expected
