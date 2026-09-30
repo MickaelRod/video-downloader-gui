@@ -93,6 +93,14 @@ TRANSLATIONS = {
         "audio_format_label": "Audio format:",
         "default_format_label": "Default",
         "no_video_format_label": "Do not download the video (audio only)",
+        "transcript_label": "Transcription:",
+        "no_transcript_label": "Do not download the transcription",
+        "download_transcript_label": "Download the transcription (one file per language)",
+        "step_transcript_title": "Downloading transcription...",
+        "transcript_message": "Downloading the transcription, please wait.",
+        "summary_transcript": "Transcription: {files}",
+        "summary_transcript_none": "Transcription: no subtitles available for this video",
+        "summary_transcript_error": "Transcription error: {error}",
         "button_download": "Download",
         "warning_file_exists": "The video \"{filename}\" already exists. Please choose another name.",
         "step_downloading_title": "Downloading...",
@@ -118,6 +126,12 @@ TRANSLATIONS = {
         "summary_error_bot_check_hint": (
             "This platform requires a bot-check verification (e.g. sign-in confirmation) "
             "that this script cannot pass. Try again later or with another video."
+        ),
+        "summary_error_forbidden_hint": (
+            "The platform refused to serve the video stream (HTTP 403). This is a restriction on the "
+            "platform's side, not a malfunction of this script: some platforms now block downloads "
+            "that do not come from their own player. Other videos may work; you can also try again "
+            "later. The transcription, if available, can still be downloaded."
         ),
         "summary_bot_bypass_used": "Note: a bot-check verification was bypassed for this download (via deno).",
         "summary_elapsed": "Operation duration: {elapsed}",
@@ -185,6 +199,14 @@ TRANSLATIONS = {
         "audio_format_label": "Format audio :",
         "default_format_label": "Par défaut",
         "no_video_format_label": "Ne pas télécharger la vidéo (audio seul)",
+        "transcript_label": "Transcription :",
+        "no_transcript_label": "Ne pas télécharger la transcription",
+        "download_transcript_label": "Télécharger la transcription (un fichier par langue)",
+        "step_transcript_title": "Téléchargement de la transcription...",
+        "transcript_message": "Téléchargement de la transcription en cours, patienter.",
+        "summary_transcript": "Transcription : {files}",
+        "summary_transcript_none": "Transcription : aucun sous-titre disponible pour cette vidéo",
+        "summary_transcript_error": "Erreur de transcription : {error}",
         "button_download": "Télécharger",
         "warning_file_exists": "La vidéo \"{filename}\" existe déjà. Préciser un autre nom.",
         "step_downloading_title": "Téléchargement en cours...",
@@ -210,6 +232,13 @@ TRANSLATIONS = {
         "summary_error_bot_check_hint": (
             "Cette plateforme exige une vérification anti-bot (par exemple une confirmation de "
             "connexion) que ce script ne peut pas passer. Réessayer plus tard ou avec une autre vidéo."
+        ),
+        "summary_error_forbidden_hint": (
+            "La plateforme a refusé de fournir le flux vidéo (HTTP 403). Il s'agit d'une restriction "
+            "de la plateforme et non d'un dysfonctionnement de ce script : certaines plateformes "
+            "bloquent désormais les téléchargements qui ne proviennent pas de leur propre lecteur. "
+            "D'autres vidéos peuvent fonctionner ; vous pouvez aussi réessayer plus tard. La "
+            "transcription, si elle existe, reste téléchargeable."
         ),
         "summary_bot_bypass_used": "Remarque : une vérification anti-bot a été contournée pour ce téléchargement (via deno).",
         "summary_elapsed": "Durée de l'opération : {elapsed}",
@@ -271,6 +300,36 @@ def is_curl_cffi_related_error(error_text: str) -> bool:
 def is_bot_check_error(error_text: str) -> bool:
     lowered = error_text.lower()
     return "sign in to confirm" in lowered or "confirm you're not a bot" in lowered
+
+
+def select_transcript_languages(subtitles, automatic_captions) -> list:
+    """Returns the subtitle languages worth downloading: every manual subtitle language plus the
+    original-language auto-generated captions (`<lang>-orig`). The other auto-caption entries are
+    machine translations into ~150 languages; fetching them all would be slow and trigger HTTP 429.
+    """
+    languages = list(subtitles or {})
+    for lang in (automatic_captions or {}):
+        if lang.endswith("-orig") and lang[: -len("-orig")] not in languages:
+            languages.append(lang)
+    return [lang for lang in languages if lang != "live_chat"]
+
+
+def find_transcript_files(destination: str) -> list:
+    """Returns the transcription files (.srt/.vtt) written next to `destination`, i.e. named
+    `<stem>.<lang>.srt|vtt`, sorted by name."""
+    folder = os.path.dirname(destination)
+    prefix = os.path.splitext(os.path.basename(destination))[0] + "."
+    return sorted(
+        entry for entry in os.listdir(folder)
+        if entry.startswith(prefix) and entry.lower().endswith((".srt", ".vtt"))
+    )
+
+
+def is_forbidden_error(error_text: str) -> bool:
+    """True for an HTTP 403 refusal, as reported by yt-dlp ("HTTP Error 403: Forbidden") or
+    ffmpeg ("Server returned 403 Forbidden (access denied)")."""
+    lowered = error_text.lower()
+    return "403" in lowered and "forbidden" in lowered
 
 
 def check_video_url(url: str) -> None:
@@ -403,7 +462,8 @@ def ytdlp_fetch_playlist_entries(url: str):
 
 
 def ytdlp_fetch_info(url: str):
-    """Returns (title, duration_string, video_formats, audio_formats, used_bot_bypass) via yt-dlp -j.
+    """Returns (title, duration_string, video_formats, audio_formats, used_bot_bypass,
+    transcript_languages) via yt-dlp -j.
 
     video_formats is a list of (format_id, label). audio_formats is a list of
     (format_id, label, extension) — extension is needed to name audio-only downloads correctly.
@@ -451,7 +511,10 @@ def ytdlp_fetch_info(url: str):
             extension = entry.get("ext", "")
             audio_formats.append((format_id, f"{quality} ({extension.upper()})", extension))
 
-    return title, duration_string, video_formats, audio_formats, used_bot_bypass
+    transcript_languages = select_transcript_languages(
+        data.get("subtitles"), data.get("automatic_captions")
+    )
+    return title, duration_string, video_formats, audio_formats, used_bot_bypass, transcript_languages
 
 
 class VideosDownloaderApp:
@@ -468,6 +531,9 @@ class VideosDownloaderApp:
         self.download_process = None
         self.download_cancelled = False
         self.used_bot_bypass = False
+        self.transcript_languages_available = []
+        self.transcript_languages_to_download = []
+        self.transcript_summary = ""
 
         self.show_intro_step()
 
@@ -729,7 +795,8 @@ class VideosDownloaderApp:
         self.root.update()
 
         try:
-            title, duration_string, video_formats, audio_formats, used_bot_bypass = ytdlp_fetch_info(self.video_url)
+            (title, duration_string, video_formats, audio_formats, used_bot_bypass,
+             self.transcript_languages_available) = ytdlp_fetch_info(self.video_url)
         except Exception as error:
             if is_bot_check_error(str(error)):
                 messagebox.showerror(self.t("app_title"), self.t("summary_error_bot_check_hint"))
@@ -778,6 +845,7 @@ class VideosDownloaderApp:
     def show_ytdlp_options_step(
         self, title, duration_string, video_formats, audio_formats, warning: str = "",
         selected_title=None, selected_video_index: int = 0, selected_audio_index: int = 0,
+        selected_transcript_index: int = 0,
     ) -> None:
         frame = self.build_frame(self.t("step_options_title"))
 
@@ -811,6 +879,14 @@ class VideosDownloaderApp:
         audio_combo.pack(pady=(6, 16))
         audio_combo.current(selected_audio_index)
 
+        tk.Label(frame, text=self.t("transcript_label")).pack(anchor="w")
+        transcript_combo = ttk.Combobox(
+            frame, values=[self.t("no_transcript_label"), self.t("download_transcript_label")],
+            width=91, state="readonly",
+        )
+        transcript_combo.pack(pady=(6, 16))
+        transcript_combo.current(selected_transcript_index)
+
         def on_download():
             chosen_title = title_entry.get().strip() or title or DEFAULT_FILENAME_STEM
             sanitized_title = sanitize_filename(chosen_title)
@@ -839,9 +915,15 @@ class VideosDownloaderApp:
                     selected_title=title_entry.get(),
                     selected_video_index=video_combo.current(),
                     selected_audio_index=audio_combo.current(),
+                    selected_transcript_index=transcript_combo.current(),
                 )
                 return
 
+            self.transcript_summary = ""
+            wants_transcript = transcript_combo.current() == 1
+            self.transcript_languages_to_download = list(self.transcript_languages_available) if wants_transcript else []
+            if wants_transcript and not self.transcript_languages_available:
+                self.transcript_summary = self.t("summary_transcript_none")
             self.run_ytdlp_download(destination, video_format_id, audio_format_id, audio_only=audio_only)
 
         buttons_frame = tk.Frame(frame)
@@ -894,9 +976,62 @@ class VideosDownloaderApp:
                     error_message += " " + self.t(
                         "summary_error_curl_cffi_hint", version=CURL_CFFI_RECOMMENDED_VERSION
                     )
+                elif is_forbidden_error(stderr_text or ""):
+                    error_message += " " + self.t("summary_error_forbidden_hint")
             return success, error_message
 
         self.run_download_with_progress(process, destination, parse_ytdlp_progress_line, on_finished)
+
+    def run_transcript_download(self, destination: str, video_success: bool, elapsed: float, error_message: str) -> None:
+        """Downloads one subtitle file per language next to the video, then shows the summary.
+
+        Runs after the video download (whether it succeeded or not) on a worker thread so the
+        Tkinter main loop stays responsive.
+        """
+        frame = self.build_frame(self.t("step_transcript_title"))
+        tk.Label(frame, text=self.t("transcript_message"), wraplength=WINDOW_WIDTH - 60, justify="left").pack()
+        progress_bar = ttk.Progressbar(frame, length=WINDOW_WIDTH - 60, mode="indeterminate")
+        progress_bar.pack(pady=(12, 0))
+        progress_bar.start(15)
+        self.root.unbind("<Return>")
+
+        stem = os.path.splitext(destination)[0].replace("%", "%%")
+        command = [
+            YTDLP_EXE, "--skip-download", "--write-subs", "--write-auto-subs",
+            "--sub-langs", ",".join(self.transcript_languages_to_download),
+            "-o", stem + ".%(ext)s", self.video_url,
+        ]
+        if is_ffmpeg_available():
+            command[1:1] = ["--convert-subs", "srt"]
+
+        outcome = {}
+        start_time = time.time()
+
+        def worker():
+            try:
+                outcome["result"] = subprocess.run(command, capture_output=True, text=True, timeout=300)
+            except Exception as error:  # timeout, OSError...
+                outcome["error"] = str(error)
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+        def poll():
+            if thread.is_alive():
+                self.root.after(100, poll)
+                return
+            progress_bar.stop()
+            files = find_transcript_files(destination)
+            if files:
+                self.transcript_summary = self.t("summary_transcript", files=", ".join(files))
+            else:
+                result = outcome.get("result")
+                stderr_lines = [line for line in (result.stderr if result else "").splitlines() if line.strip()]
+                reason = outcome.get("error") or (stderr_lines[-1] if stderr_lines else self.t("error_unknown"))
+                self.transcript_summary = self.t("summary_transcript_error", error=reason)
+            self.show_summary_step(video_success, destination, elapsed + time.time() - start_time, error_message)
+
+        poll()
 
     # ---------- Step 3 (ffmpeg): file name ----------
 
@@ -956,6 +1091,8 @@ class VideosDownloaderApp:
             error_message = ""
             if not success and not self.download_cancelled:
                 error_message = stderr_text.strip().splitlines()[-1] if stderr_text else self.t("error_unknown")
+                if is_forbidden_error(stderr_text or ""):
+                    error_message += " " + self.t("summary_error_forbidden_hint")
             return success, error_message
 
         self.run_download_with_progress(process, destination, parse_progress_line, on_finished)
@@ -1074,6 +1211,9 @@ class VideosDownloaderApp:
                 # A retry (e.g. bot-check bypass) took over and already showed its own screen.
                 return
             success, error_message = result
+            if self.transcript_languages_to_download:
+                self.run_transcript_download(destination, success, elapsed, error_message)
+                return
             self.show_summary_step(success, destination, elapsed, error_message)
 
         tick()
@@ -1107,6 +1247,9 @@ class VideosDownloaderApp:
         elif not cancelled:
             details.append(self.t("summary_error", error=error_message))
 
+        if self.transcript_summary and not cancelled:
+            details.append(self.transcript_summary)
+
         details.append(self.t("summary_elapsed", elapsed=self.format_duration(elapsed)))
 
         if success and self.used_bot_bypass:
@@ -1127,6 +1270,8 @@ class VideosDownloaderApp:
     def start_new_video(self) -> None:
         self.video_url = ""
         self.used_bot_bypass = False
+        self.transcript_languages_to_download = []
+        self.transcript_summary = ""
         self.show_url_step()
 
 
