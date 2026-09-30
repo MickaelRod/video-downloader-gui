@@ -46,7 +46,8 @@ TRANSLATIONS = {
         "intro_message": (
             "This script downloads a video from the Internet "
             "and saves it to the Downloads folder.\n"
-            "yt-dlp supports many streaming platforms with format selection; "
+            "yt-dlp supports many streaming platforms with format selection, audio-only downloads "
+            "and optional transcription (subtitles) download; "
             "FFmpeg only works with direct video file links (e.g. a URL ending in .mp4)."
         ),
         "intro_warning_title": "Disclaimer:",
@@ -151,7 +152,8 @@ TRANSLATIONS = {
         "intro_message": (
             "Ce script permet de télécharger une vidéo depuis Internet "
             "et de l'enregistrer dans le dossier Téléchargements.\n"
-            "yt-dlp prend en charge de nombreuses plateformes de streaming avec choix des formats ; "
+            "yt-dlp prend en charge de nombreuses plateformes de streaming avec choix des formats, "
+            "téléchargement audio seul et téléchargement optionnel de la transcription (sous-titres) ; "
             "FFmpeg fonctionne uniquement avec des liens directs vers un fichier vidéo (ex. une URL se terminant par .mp4)."
         ),
         "intro_warning_title": "Avertissement :",
