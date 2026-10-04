@@ -21,6 +21,17 @@ try {
   const git = (args, timeout) => spawnSync('git', args, { cwd, encoding: 'utf8', timeout: timeout || 5000 });
   if (git(['rev-parse', '--is-inside-work-tree']).stdout.trim() !== 'true') process.exit(0);
 
+  // Session cloud : l'identite Git par defaut est "Claude", ce qui fait apparaitre Claude comme contributeur.
+  // On la remplace (config locale du clone, jamais commitee) par celle de Mickael.
+  // Une variable GIT_AUTHOR_* / GIT_COMMITTER_* definie par l'environnement l'emporterait sur la config : on le signale.
+  let identityNote = '';
+  if (process.env.CLAUDE_CODE_REMOTE === 'true') {
+    git(['config', 'user.name', 'MickaelRod']);
+    git(['config', 'user.email', '14089844+MickaelRod@users.noreply.github.com']);
+    const forced = ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL'].filter((k) => process.env[k]);
+    if (forced.length) identityNote = `ATTENTION : ${forced.join(', ')} defini(s) par l'environnement cloud : l'identite Git des commits reste celle de l'environnement (Claude) malgre la config du depot. Signale-le a Mickael avant de commiter.`;
+  }
+
   let mode = 'branch';
   try {
     const m = fs.readFileSync(path.join(projectDir, '.claude', 'git-mode'), 'utf8').trim();
@@ -59,6 +70,8 @@ try {
     `- Fichiers non suivis : ${untracked.length ? `${untracked.length} (${names(untracked)})` : 'aucun'}`,
     `- Dernier commit : ${last || 'aucun'}`,
   ];
+
+  if (identityNote) out.unshift(identityNote);
 
   // Projet prevu pour le local : avertir si la session tourne dans le cloud.
   // Le fichier .claude/local-only contient la raison (a commiter pour etre visible dans le cloud).
