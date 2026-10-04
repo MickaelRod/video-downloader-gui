@@ -40,6 +40,13 @@ function main() {
     if (m === 'main' || m === 'branch') mode = m;
   } catch (e) { /* defaut : branch */ }
 
+  // Aucune attribution Claude dans les commits ni les descriptions de PR (regle de Mickael).
+  // Test sur la commande brute : le message de commit y figure en entier (-m, heredoc).
+  if (/\bgit\s+commit\b|\bgh\s+pr\s+(create|edit)\b/.test(raw)
+      && /Co-Authored-By:[^\n]*(claude|anthropic)|Generated with \[?Claude|Claude-Session:|noreply@anthropic\.com/i.test(raw)) {
+    decide('deny', "BLOQUE : aucune ligne d'attribution Claude (Co-Authored-By, Generated with Claude...) dans les commits ni les PR. Retire-la et recommence.");
+  }
+
   // Retire heredocs et chaines entre guillemets (ex. messages de commit)
   // pour ne pas declencher sur du texte.
   const cmd = raw
