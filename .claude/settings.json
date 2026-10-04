@@ -22,5 +22,8 @@
         ]
       }
     ]
+  },
+  "attribution": {
+    "sessionUrl": false
   }
 }
