@@ -44,7 +44,9 @@ try {
   }
 
   const lines = git(['status', '--porcelain']).stdout.split('\n').filter(Boolean);
-  const tracked = lines.filter((l) => !l.startsWith('??'));
+  // Git sous Windows (autocrlf) marque parfois "modifie" un fichier au contenu identique : on confirme par un vrai diff.
+  const reallyChanged = (l) => { const f = l.slice(3).replace(/^.* -> /, '').replace(/^"|"$/g, '').trim(); return git(['diff', '--quiet', '--', f]).status !== 0 || git(['diff', '--cached', '--quiet', '--', f]).status !== 0; };
+  const tracked = lines.filter((l) => !l.startsWith('??')).filter(reallyChanged);
   const untracked = lines.filter((l) => l.startsWith('??'));
   const names = (arr) => arr.slice(0, 5).map((l) => l.slice(3).trim()).join(', ') + (arr.length > 5 ? `, +${arr.length - 5}` : '');
   const last = git(['log', '-1', '--format=%h %cs %s']).stdout.trim();
